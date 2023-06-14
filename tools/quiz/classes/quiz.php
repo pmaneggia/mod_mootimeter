@@ -47,9 +47,6 @@ class quiz extends \mod_mootimeter\toolhelper {
         $record = new \stdClass();
         $record->pageid = $page->id;
         $record->usermodified = $USER->id;
-        if($USER->id < 5){
-            $record->usermodified = time();
-        }
         $record->optionid = $aoid;
         $record->timecreated = time();
 
@@ -135,6 +132,7 @@ class quiz extends \mod_mootimeter\toolhelper {
 
         $ispoll = $this->get_quiztype($page->id);
         $answeroptions = $this->get_answer_options($page->id);
+        $params['lastupdated'] = $this->get_last_update_time($page->id, "quiz");
 
         foreach ($answeroptions as $ao) {
             $params['answer_options'][] = [
@@ -194,13 +192,18 @@ class quiz extends \mod_mootimeter\toolhelper {
         return $settings;
     }
 
-    public function get_result_page($page) {
+    /***
+     * Render the result page and display the bar chart.
+     * @param $page
+     * @return mixed
+     * @throws \coding_exception
+     * @throws \dml_exception
+     */
+    public function get_result_page($page){
 
         global $OUTPUT, $DB;
         $chart = new \core\chart_bar();
         $labelsrecords = $DB->get_records('mtmt_quiz_options', ["pageid" => $page->id]);
-        // var_dump($records);
-        // echo "<hr>";
         $labels = [];
         foreach($labelsrecords as $record){
             $labels[] = $record->optiontext;
@@ -213,22 +216,33 @@ class quiz extends \mod_mootimeter\toolhelper {
             }
         }
 
-        // var_dump($labels);
         $chart->set_labels($labels);
         $values = array_map(function($obj){ return (!empty($obj->cnt)) ? $obj->cnt : 0;
         }, (array)$answersgrouped);
         $series = new \core\chart_series($page->question, array_values(array_map("floatval", $values)));
         $chart->add_series($series);
-        // var_dump($series);
-        // echo "<hr>";
-        // var_dump($values);die;
+
         if(empty($labels) || empty($values)){
             $paramschart = ['charts' => get_string("nodata", "mootimetertool_quiz")];
         } else {
-            $paramschart = ['charts' => $OUTPUT->render($chart)];
+            $paramschart = [
+                'labels' => $labels,
+                'values'=>'['.implode(',', $this->get_counted_answers($page->id)).']',
+                'question' => "\"test\""];
         }
 
         return $OUTPUT->render_from_template("mootimetertool_quiz/view_results", $paramschart);
+    }
+
+    /**
+     * Get array of counted values for each answer/ option.
+     * @param int $pageid
+     * @return array
+     * @throws \dml_exception
+     */
+    public function get_counted_answers(int $pageid){
+        $values = array_map(function($obj){ return $obj->cnt;},(array)$this->get_answers_grouped("mtmt_quiz_answers", ["pageid"=>$pageid], 'optionid'));
+        return array_values(array_map("floatval", $values));
     }
 
     /**
